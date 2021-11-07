@@ -77,6 +77,11 @@ void ipiStallCoreCallback(bool_t irqPath)
     }
 }
 
+void ipiCallCoreCallback(word_t a0, word_t a1, word_t a2, bool_t irqPath)
+{
+    remoteCall_exception = remoteFunc(a0, a1, a2, get_ipi_arg(3), get_ipi_arg(4), get_ipi_arg(5));
+}
+
 void handleIPI(irq_t irq, bool_t irqPath)
 {
     if (IRQT_TO_IRQ(irq) == irq_remote_call_ipi) {
@@ -106,6 +111,13 @@ void doRemoteMaskOp(IpiRemoteCall_t func, word_t data1, word_t data2, word_t dat
         ipi_send_mask(CORE_IRQ_TO_IRQT(0, irq_remote_call_ipi), mask, true);
         ipi_wait(totalCoreBarrier);
     }
+}
+
+exception_t doRemoteCallOp(word_t cpu, void* func, word_t a1, word_t a2, word_t a3, word_t a4, word_t a5, word_t a6)
+{
+    init_ipi_call(func, a4, a5, a6);
+    doRemoteMaskOp(IpiRemoteCall_Call, a1, a2, a3, BIT(cpu));
+    return remoteCall_exception;
 }
 
 void doMaskReschedule(word_t mask)

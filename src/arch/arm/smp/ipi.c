@@ -12,6 +12,8 @@
 #ifdef ENABLE_SMP_SUPPORT
 
 static IpiModeRemoteCall_t remoteCall;   /* the remote call being requested */
+static exception_t remoteCall_exception;
+static exception_t (*remoteFunc)(word_t a1, word_t a2, word_t a3, word_t a4, word_t a5, word_t a6);
 
 static inline void init_ipi_args(IpiRemoteCall_t func,
                                  word_t data1, word_t data2, word_t data3,
@@ -26,6 +28,14 @@ static inline void init_ipi_args(IpiRemoteCall_t func,
     totalCoreBarrier = popcountl(mask);
 }
 
+static inline void init_ipi_call(void* func, word_t data4, word_t data5, word_t data6)
+{
+    remoteFunc = func;
+    ipi_args[3] = data4;
+    ipi_args[4] = data5;
+    ipi_args[5] = data6;
+}
+
 static void handleRemoteCall(IpiModeRemoteCall_t call, word_t arg0,
                              word_t arg1, word_t arg2, bool_t irqPath)
 {
@@ -35,6 +45,9 @@ static void handleRemoteCall(IpiModeRemoteCall_t call, word_t arg0,
         switch ((IpiRemoteCall_t)call) {
         case IpiRemoteCall_Stall:
             ipiStallCoreCallback(irqPath);
+            break;
+        case IpiRemoteCall_Call:
+            ipiCallCoreCallback(arg0, arg1, arg2, irqPath);
             break;
 
 #ifdef CONFIG_HAVE_FPU

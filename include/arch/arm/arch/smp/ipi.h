@@ -11,6 +11,7 @@
 #ifdef ENABLE_SMP_SUPPORT
 typedef enum {
     IpiRemoteCall_Stall,
+    IpiRemoteCall_Call,
     IpiRemoteCall_InvalidateTranslationSingle,
     IpiRemoteCall_InvalidateTranslationASID,
     IpiRemoteCall_InvalidateTranslationAll,

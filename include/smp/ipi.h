@@ -12,7 +12,7 @@
 #include <arch/smp/ipi.h>
 
 #ifdef ENABLE_SMP_SUPPORT
-#define MAX_IPI_ARGS    3   /* Maximum number of parameters to remote function */
+#define MAX_IPI_ARGS    6   /* Maximum number of parameters to remote function */
 
 static volatile struct {
     word_t count;
@@ -155,5 +155,70 @@ static void inline doRemoteOp3Arg(IpiRemoteCall_t func, word_t data1, word_t dat
  */
 void doMaskReschedule(word_t mask);
 
+void ipiCallCoreCallback(word_t a0, word_t a1, word_t a2, bool_t irqPath);
+exception_t doRemoteCallOp(word_t cpu, void* func, word_t a1, word_t a2, word_t a3, word_t a4, word_t a5, word_t a6);
+
+#define CALL1_ON_CORE(cpu, fn, a1) \
+        doRemoteCallOp(cpu, fn, (word_t)a1, 0, 0, 0, 0, 0)
+
+#define CALL2_ON_CORE(cpu, fn, a1, a2) \
+        doRemoteCallOp(cpu, fn, (word_t)a1, (word_t)a2, 0, 0, 0, 0)
+
+#define CALL3_ON_CORE(cpu, fn, a1, a2, a3) \
+        doRemoteCallOp(cpu, fn, (word_t)a1, (word_t)a2, (word_t)a3, 0, 0, 0)
+
+#define CALL4_ON_CORE(cpu, fn, a1, a2, a3, a4) \
+        doRemoteCallOp(cpu, fn, (word_t)a1, (word_t)a2, (word_t)a3, (word_t)a4, 0, 0)
+
+#define CALL5_ON_CORE(cpu, fn, a1, a2, a3, a4, a5) \
+        doRemoteCallOp(cpu, fn, (word_t)a1, (word_t)a2, (word_t)a3, (word_t)a4, (word_t)a5, 0)
+
+#define CALL6_ON_CORE(cpu, fn, a1, a2, a3, a4, a5, a6) \
+        doRemoteCallOp(cpu, fn, (word_t)a1, (word_t)a2, (word_t)a3, (word_t)a4, (word_t)a5, (word_t)a6)
+
+static inline bool_t remote_active_tcb(tcb_t *tcb)
+{
+    return (
+#ifdef CONFIG_KERNEL_MCS
+        tcb->tcbSchedContext &&
+#endif
+        tcb->tcbAffinity != getCurrentCPUIndex() &&
+        NODE_STATE_ON_CORE(ksCurThread, tcb->tcbAffinity) == tcb);
+}
+
+#define CALL_ON_TCB_CORE(n, fn, tcb, ...) \
+    remote_active_tcb(tcb) ? CALL ## n ## _ON_CORE(tcb->tcbAffinity, fn, tcb, __VA_ARGS__) : fn(tcb, __VA_ARGS__)
+
+#ifdef CONFIG_KERNEL_MCS
+static inline bool_t remote_active_sc(sched_context_t *sc)
+{
+    return (sc->scTcb &&
+        sc->scCore != getCurrentCPUIndex() &&
+        NODE_STATE_ON_CORE(ksCurThread, sc->scCore) == sc->scTcb);
+}
+
+#define CALL_ON_SC_CORE(n, fn, sc, ...) \
+    remote_active_sc(sc) ? CALL ## n ## _ON_CORE(sc->scCore, fn, sc, __VA_ARGS__) : fn(sc, __VA_ARGS__)
+#endif /* CONFIG_KERNEL_MCS */
+
+#else
+
+#define CALL_ON_TCB_CORE(n, fn, tcb, ...)   fn(tcb, __VA_ARGS__)
+#define CALL_ON_SC_CORE(n, fn, sc, ...)     fn(sc, __VA_ARGS__)
+
 #endif /* ENABLE_SMP_SUPPORT */
+
+#define CALL1_ON_TCB_CORE(fn, tcb)      CALL_ON_TCB_CORE(1, fn, tcb)
+#define CALL2_ON_TCB_CORE(fn, tcb, ...) CALL_ON_TCB_CORE(2, fn, tcb, __VA_ARGS__)
+#define CALL3_ON_TCB_CORE(fn, tcb, ...) CALL_ON_TCB_CORE(3, fn, tcb, __VA_ARGS__)
+#define CALL4_ON_TCB_CORE(fn, tcb, ...) CALL_ON_TCB_CORE(4, fn, tcb, __VA_ARGS__)
+#define CALL5_ON_TCB_CORE(fn, tcb, ...) CALL_ON_TCB_CORE(5, fn, tcb, __VA_ARGS__)
+#define CALL6_ON_TCB_CORE(fn, tcb, ...) CALL_ON_TCB_CORE(6, fn, tcb, __VA_ARGS__)
+
+#define CALL1_ON_SC_CORE(fn, sc)      CALL_ON_SC_CORE(1, fn, sc)
+#define CALL2_ON_SC_CORE(fn, sc, ...) CALL_ON_SC_CORE(2, fn, sc, __VA_ARGS__)
+#define CALL3_ON_SC_CORE(fn, sc, ...) CALL_ON_SC_CORE(3, fn, sc, __VA_ARGS__)
+#define CALL4_ON_SC_CORE(fn, sc, ...) CALL_ON_SC_CORE(4, fn, sc, __VA_ARGS__)
+#define CALL5_ON_SC_CORE(fn, sc, ...) CALL_ON_SC_CORE(5, fn, sc, __VA_ARGS__)
+#define CALL6_ON_SC_CORE(fn, sc, ...) CALL_ON_SC_CORE(6, fn, sc, __VA_ARGS__)
 
