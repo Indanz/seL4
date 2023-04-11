@@ -298,6 +298,10 @@ static inline irq_t getActiveIRQ(void)
 
     if (IS_IRQ_VALID(active_irq[CURRENT_CPU_INDEX()])) {
         irq = CORE_IRQ_TO_IRQT(CURRENT_CPU_INDEX(), active_irq[CURRENT_CPU_INDEX()] & IRQ_MASK);
+#ifdef CONFIG_DEBUG_BUILD
+        extern word_t irq_affinity[];
+        assert(irq < SPI_START || irq_affinity[irq] == CURRENT_CPU_INDEX());
+#endif
     } else {
         irq = irqInvalid;
     }

@@ -54,6 +54,10 @@ volatile struct gic_rdist_sgi_ppi_map *gic_rdist_sgi_ppi_map[CONFIG_MAX_NUM_NODE
 
 static word_t mpidr_map[CONFIG_MAX_NUM_NODES];
 
+#ifdef CONFIG_DEBUG_BUILD
+word_t irq_affinity[1024];
+#endif
+
 static inline word_t get_mpidr(word_t core_id)
 {
     return mpidr_map[core_id];
@@ -382,6 +386,10 @@ void setIRQTarget(irq_t irq, seL4_Word target)
 
     word_t hw_irq = IRQT_TO_IRQ(irq);
     gic_dist->iroutern[hw_irq] = MPIDR_AFF_MASK(mpidr_map[target]);
+
+#ifdef CONFIG_DEBUG_BUILD
+    irq_affinity[hw_irq] = target;
+#endif
 }
 
 #endif /* ENABLE_SMP_SUPPORT */
