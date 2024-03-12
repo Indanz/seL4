@@ -39,11 +39,11 @@
 
 import operator
 import itertools
-import xml.dom.minidom
 from argparse import ArgumentParser
 import sys
 from functools import reduce
 from condition import condition_to_cpp
+from lxml import etree
 
 # Number of bits in a standard word
 WORD_SIZE_BITS_ARCH = {
@@ -220,8 +220,8 @@ class Parameter(object):
 
 class Api(object):
     def __init__(self, node):
-        self.name = node.getAttribute("name")
-        self.label_prefix = node.getAttribute("label_prefix") or ""
+        self.name = node.get("name")
+        self.label_prefix = node.get("label_prefix") or ""
 
 #
 # Types
@@ -773,7 +773,7 @@ def get_xml_element_contents(element):
     Converts the contents of an xml element into a string, with all
     child xml nodes unchanged.
     """
-    return "".join([c.toxml() for c in element.childNodes])
+    return etree.tostring(element)
 
 
 def get_xml_element_content_with_xmlonly(element):
@@ -781,11 +781,11 @@ def get_xml_element_content_with_xmlonly(element):
     Converts the contents of an xml element into a string, wrapping
     all child xml nodes in doxygen @xmlonly/@endxmlonly keywords.
     """
-
+    return etree.tostring(element)
     result = []
     prev_element = False
-    for node in element.childNodes:
-        if node.nodeType == xml.dom.Node.TEXT_NODE:
+    for node in element:
+        if node.text:
             if prev_element:
                 # text node following element node
                 result.append(" @endxmlonly ")
@@ -796,22 +796,9 @@ def get_xml_element_content_with_xmlonly(element):
                 result.append(" @xmlonly ")
             prev_element = True
 
-        result.append(node.toxml())
+        result.append(node.tostring())
 
     return "".join(result)
-
-
-def normalise_text(text):
-    """
-    Removes leading and trailing whitespace from each line of text.
-    Removes leading and trailing blank lines from text.
-    """
-    stripped = text.strip()
-    stripped_lines = [line.strip() for line in text.split("\n")]
-    # remove leading and trailing empty lines
-    stripped_head = list(itertools.dropwhile(lambda s: not s, stripped_lines))
-    stripped_tail = itertools.dropwhile(lambda s: not s, reversed(stripped_head))
-    return "\n".join(reversed(list(stripped_tail)))
 
 
 def parse_xml_file(input_file, valid_types):
@@ -827,35 +814,38 @@ def parse_xml_file(input_file, valid_types):
     # Parse the XML to generate method structures.
     methods = []
     structs = []
-    doc = xml.dom.minidom.parse(input_file)
+    parser = etree.XMLParser(remove_blank_text=True)
+    doc = etree.parse(input_file, parser)
+    doc.xinclude()
+    #print(etree.tostring(doc));
 
-    api = Api(doc.getElementsByTagName("api")[0])
+    api = Api(doc.getroot())
 
-    for struct in doc.getElementsByTagName("struct"):
+    for struct in doc.iter("struct"):
         _struct_members = []
-        struct_name = struct.getAttribute("name")
+        struct_name = struct.get("name")
         struct_type = type_names.get(struct_name)
         # Calculate the number of members to take based on the type definition
         # We can't take all members because some objects (seL4_VCPUContext) have
         # a config-dependent size.
         num_struct_mems = int(struct_type.size_bits/struct_type.wordsize)
-        for members in list(struct.getElementsByTagName("member"))[0:num_struct_mems]:
-            member_name = members.getAttribute("name")
+        for members in struct.findall("member")[0:num_struct_mems]:
+            member_name = members.get("name")
             _struct_members.append(member_name)
         structs.append((struct_name, _struct_members))
 
-    for interface in doc.getElementsByTagName("interface"):
-        interface_name = interface.getAttribute("name")
-        interface_manual_name = interface.getAttribute("manual_name") or interface_name
+    for interface in doc.iter("interface"):
+        interface_name = interface.get("name")
+        interface_manual_name = interface.get("manual_name") or interface_name
 
-        interface_cap_description = interface.getAttribute("cap_description")
+        interface_cap_description = interface.get("cap_description")
 
-        for method in interface.getElementsByTagName("method"):
-            method_name = method.getAttribute("name")
-            method_id = method.getAttribute("id")
-            method_condition = condition_to_cpp(method.getElementsByTagName("condition"))
-            method_manual_name = method.getAttribute("manual_name") or method_name
-            method_manual_label = method.getAttribute("manual_label")
+        for method in interface.iter("method"):
+            method_name = method.get("name")
+            method_id = method.get("id")
+            method_condition = condition_to_cpp(method.findall("condition"))
+            method_manual_name = method.get("manual_name") or method_name
+            method_manual_label = method.get("manual_label")
 
             if not method_manual_label:
                 # If no manual label is specified, infer one from the interface and method
@@ -871,19 +861,17 @@ def parse_xml_file(input_file, valid_types):
             comment_lines = ["@xmlonly <manual name=\"%s\" label=\"%s\"/> @endxmlonly" %
                              (method_manual_name, method_manual_label)]
 
-            method_brief = method.getElementsByTagName("brief")
+            method_brief = method.find("brief")
             if method_brief:
-                method_brief_text = get_xml_element_contents(method_brief[0])
-                normalised_method_brief_text = normalise_text(method_brief_text)
+                method_brief_text = get_xml_element_contents(method_brief)
                 comment_lines.append("@brief @xmlonly %s @endxmlonly" %
-                                     normalised_method_brief_text)
+                                     method_brief_text)
 
-            method_description = method.getElementsByTagName("description")
+            method_description = method.find("description")
             if method_description:
-                method_description_text = get_xml_element_contents(method_description[0])
-                normalised_method_description_text = normalise_text(method_description_text)
+                method_description_text = get_xml_element_contents(method_description)
                 comment_lines.append("\n@xmlonly\n%s\n@endxmlonly\n" %
-                                     normalised_method_description_text)
+                                     method_description_text)
 
             #
             # Get parameters.
@@ -893,20 +881,20 @@ def parse_xml_file(input_file, valid_types):
             input_params = [Parameter("_service", type_names[interface_name])]
 
             cap_description = interface_cap_description
-            cap_param = method.getElementsByTagName("cap_param")
+            cap_param = method.find("cap_param")
             if cap_param:
-                append_description = cap_param[0].getAttribute("append_description")
+                append_description = cap_param.get("append_description")
                 if append_description:
                     cap_description += append_description
 
             comment_lines.append("@param[in] _service %s" % cap_description)
             output_params = []
-            for param in method.getElementsByTagName("param"):
-                param_name = param.getAttribute("name")
-                param_type = type_names.get(param.getAttribute("type"))
+            for param in method.iter("param"):
+                param_name = param.get("name")
+                param_type = type_names.get(param.get("type"))
                 if not param_type:
-                    raise Exception("Unknown type '%s'." % (param.getAttribute("type")))
-                param_dir = param.getAttribute("dir")
+                    raise Exception("Unknown type '%s'." % (param.get("type")))
+                param_dir = param.get("dir")
                 assert (param_dir == "in") or (param_dir == "out")
                 if param_dir == "in":
                     input_params.append(Parameter(param_name, param_type))
@@ -914,21 +902,20 @@ def parse_xml_file(input_file, valid_types):
                     output_params.append(Parameter(param_name, param_type))
 
                 if param_dir == "in" or param_type.pass_by_reference():
-                    param_description = param.getAttribute("description")
+                    param_description = param.get("description")
                     if not param_description:
-                        param_description_element = param.getElementsByTagName("description")
+                        param_description_element = param.find("description")
                         if param_description_element:
-                            param_description_text = get_xml_element_content_with_xmlonly(
-                                param_description_element[0])
-                            param_description = normalise_text(param_description_text)
+                            param_description = get_xml_element_content_with_xmlonly(
+                                param_description_element)
 
                     comment_lines.append("@param[%s] %s %s " %
                                          (param_dir, param_name, param_description))
 
-            method_return_description = method.getElementsByTagName("return")
+            method_return_description = method.find("return")
             if method_return_description:
                 comment_lines.append("@return @xmlonly %s @endxmlonly" %
-                                     get_xml_element_contents(method_return_description[0]))
+                                     get_xml_element_contents(method_return_description))
             else:
                 # no return documentation given - default to something sane
                 if is_result_struct_required(output_params):
@@ -936,15 +923,14 @@ def parse_xml_file(input_file, valid_types):
                 else:
                     comment_lines.append("@return @xmlonly <errorenumdesc/> @endxmlonly")
 
-            for error in method.getElementsByTagName("error"):
-                error_name = error.getAttribute("name")
-                error_description = error.getAttribute("description")
+            for error in method.iter("error"):
+                error_name = error.get("name")
+                error_description = error.get("description")
                 if not error_description:
-                    error_description_element = error.getElementsByTagName("description")
+                    error_description_element = error.find("description")
                     if error_description_element:
-                        error_description_text = get_xml_element_content_with_xmlonly(
-                            error_description_element[0])
-                        error_description = normalise_text(error_description_text)
+                        error_description = get_xml_element_content_with_xmlonly(
+                            error_description_element)
                 comment_lines.append("@retval %s %s " % (error_name, error_description))
 
             # split each line on newlines
