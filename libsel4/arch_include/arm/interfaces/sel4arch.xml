@@ -5,7 +5,8 @@
      SPDX-License-Identifier: BSD-2-Clause
 -->
 
-<api name="ObjectApiArm" label_prefix="arm_">
+<api name="ObjectApiArm" label_prefix="arm_"
+    xmlns:xi="http://www.w3.org/2001/XInclude" xml:base="../../../include/interfaces/">
     <interface name="seL4_ARM_PageTable" manual_name="Page Table"
         cap_description="Capability to the page table being operated on.">
         <method id="ARMPageTableMap" name="Map" manual_label="pagetable_map">
@@ -26,35 +27,9 @@
                 <description>
                     VM Attributes for the mapping. <docref>Possible values for this type are given in <autoref label="ch:vspace"/>  .</docref>
                 </description>
-            <error name="seL4_DeleteFirst">
-                <description>
-                    A mapping already exists for this level in <texttt text="vspace"/> at <texttt text="vaddr."/>
-                </description>
-            </error>
-            <error name="seL4_FailedLookup">
-                <description>
-                    On aarch64, <texttt text="vspace"/> does not have a Page Directory mapped at <texttt text="vaddr"/>.
-                    Or, <texttt text="vspace"/> is not assigned to an ASID pool.
-                </description>
-            </error>
-            <error name="seL4_IllegalOperation">
-                <description>
-                    The <texttt text="_service"/> is a CPtr to a capability of the wrong type.
-                </description>
-            </error>
-            <error name="seL4_InvalidArgument">
-                <description>
-                    The <texttt text="vaddr"/> is in the kernel virtual address range.
-                </description>
-            </error>
-            <error name="seL4_InvalidCapability">
-                <description>
-                    The <texttt text="_service"/> or <texttt text="vspace"/> is a CPtr to a capability of the wrong type.
-                    Or, <texttt text="vspace"/> is not assigned to an ASID pool.
-                    Or, <texttt text="_service"/> is already mapped in a VSpace.
-                </description>
-            </error>
             </param>
+            <xi:include href="test-iz.xml" xpointer="xpointer(//error[@name='seL4_IllegalOperation'])"/>
+            <xi:include href="test-iz.xml" xpointer="xpointer(//error)"/>
         </method>
         <method id="ARMPageTableUnmap" name="Unmap" manual_label="pagetable_unmap">
             <brief>

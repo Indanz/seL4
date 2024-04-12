@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<common_errors>
+    <error name="seL4_FailedLookup">
+        <description>
+            On aarch64, <texttt text="vspace"/> does not have a Page Directory mapped at <texttt text="vaddr"/>.
+            Or, <texttt text="vspace"/> is not assigned to an ASID pool.
+        </description>
+    </error>
+    <error name="seL4_IllegalOperation">
+        <description>
+            The <texttt text="_service"/> is a CPtr to a capability of the wrong type.
+        </description>
+    </error>
+    <error name="seL4_InvalidArgument">
+        <description>
+            The <texttt text="vaddr"/> is in the kernel virtual address range.
+        </description>
+    </error>
+    <error name="seL4_InvalidCapability">
+        <description>
+            The <texttt text="_service"/> or <texttt text="vspace"/> is a CPtr to a capability of the wrong type.
+            Or, <texttt text="vspace"/> is not assigned to an ASID pool.
+            Or, <texttt text="_service"/> is already mapped in a VSpace.
+        </description>
+    </error>
+    <error name="seL4_DeleteFirst">
+        <description>
+            A mapping already exists for this level in <texttt text="vspace"/> at <texttt text="vaddr."/>
+        </description>
+    </error>
+</common_errors>
