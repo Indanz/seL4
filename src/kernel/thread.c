@@ -299,6 +299,14 @@ void doNBRecvFailedTransfer(tcb_t *thread)
     setRegister(thread, badgeRegister, 0);
 }
 
+static void prepareNextDomain(void)
+{
+    if (config_set(CONFIG_HAVE_FPU)) {
+        /* Save FPU state now to avoid touching cross-domain state later */
+        switchLocalFpuOwner(NULL);
+    }
+}
+
 static void nextDomain(void)
 {
     ksDomScheduleIdx++;
@@ -343,6 +351,7 @@ static void switchSchedContext(void)
 static void scheduleChooseNewThread(void)
 {
     if (ksDomainTime == 0) {
+        prepareNextDomain();
         nextDomain();
     }
     chooseThread();
