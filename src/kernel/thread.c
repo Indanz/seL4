@@ -300,6 +300,14 @@ void doNBRecvFailedTransfer(tcb_t *thread)
     setRegister(thread, badgeRegister, 0);
 }
 
+static void prepareSetDomain(tcb_t *tptr, dom_t dom)
+{
+    if (config_set(CONFIG_HAVE_FPU)) {
+        /* Save FPU state now to avoid touching cross-domain state later */
+        fpuThreadDelete(tptr);
+    }
+}
+
 static void prepareNextDomain(void)
 {
     if (config_set(CONFIG_HAVE_FPU)) {
@@ -476,6 +484,7 @@ void switchToIdleThread(void)
 
 void setDomain(tcb_t *tptr, dom_t dom)
 {
+    prepareSetDomain(tptr, dom);
     tcbSchedDequeue(tptr);
     tptr->tcbDomain = dom;
     if (isSchedulable(tptr)) {
