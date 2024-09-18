@@ -137,7 +137,6 @@ void NORETURN VISIBLE restore_user_context(void)
     }
 #endif
     setKernelEntryStackPointer(cur_thread);
-    lazyFPURestore(cur_thread);
 
 #ifdef CONFIG_HARDWARE_DEBUG_API
     restore_user_debug_context(cur_thread);
