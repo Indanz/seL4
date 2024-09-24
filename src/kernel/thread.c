@@ -303,8 +303,10 @@ void doNBRecvFailedTransfer(tcb_t *thread)
 static void prepareSetDomain(tcb_t *tptr, dom_t dom)
 {
     if (config_set(CONFIG_HAVE_FPU)) {
-        /* Save FPU state now to avoid touching cross-domain state later */
-        fpuRelease(tptr);
+        if (ksCurDomain != dom) {
+            /* Save FPU state now to avoid touching cross-domain state later */
+            fpuRelease(tptr);
+        }
     }
 }
 
