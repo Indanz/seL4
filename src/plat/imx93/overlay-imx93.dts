@@ -1,0 +1,30 @@
+/*
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ * Copyright 2024 Indan Zupancic
+ */
+
+/ {
+	chosen {
+		seL4,elfloader-devices =
+			&lpuart1,
+			&{/psci},
+			&{/timer};
+
+		seL4,kernel-devices =
+			&lpuart1,
+			&gic,
+			&{/timer};
+	};
+
+	/* Maximum of 2 GB, use KernelCustomDTSOverlay if your board has less */
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x16000000>;
+	};
+
+	/* Undocumented 32MB gap between these two regions at 0x96000000!? */
+	memory@98000000 {
+		device_type = "memory";
+		reg = <0x0 0x98000000 0x0 0x68000000>;
+	};
+};
