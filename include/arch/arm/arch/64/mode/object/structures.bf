@@ -29,7 +29,9 @@ block frame_cap {
     field_high capFMappedAddress     48
     field capFVMRights               2
     field capFIsDevice               1
-    padding                          6
+    padding                          5
+--- Needs memory zeroing when set, capFMappedAddress is used to track progress.
+    field capIsDirty                 1
 }
 
 -- Page table caps
