@@ -146,7 +146,13 @@ block sched_control_cap {
 
 -- Endpoint: size = 16 bytes
 block endpoint {
+#ifdef CONFIG_KERNEL_MCS
+    field budget_threshold_low 16
+    field budget_threshold_high 16
+    padding 32
+#else
     padding 64
+#endif
 
     field_high epQueue_head 28
     padding 4

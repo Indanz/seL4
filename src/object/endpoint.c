@@ -494,4 +494,42 @@ void reorderEP(endpoint_t *epptr, tcb_t *thread)
     queue = tcbEPAppend(thread, queue);
     ep_ptr_set_queue(epptr, queue);
 }
-#endif
+
+#ifdef CONFIG_EP_THRESHOLD
+
+exception_t ep_decodeSetBudgetThreshold(word_t invLabel, word_t length, word_t *buffer)
+{
+    if (length < TIME_ARG_SIZE || current_extra_caps.excaprefs[0] == NULL) {
+        userError("EndpointSetBudgetThreshold: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    cap_t ep_cap = current_extra_caps.excaprefs[0]->cap;
+    if (cap_get_capType(ep_cap) != cap_endpoint_cap) {
+        userError("EndpointSetBudgetThreshold: Target cap not an endpoint cap");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 1;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    if (!cap_endpoint_cap_get_capCanReceive(ep_cap)) {
+        userError("EndpointSetBudgetThreshold: Missing Read permission on endpoint.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 1;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    time_t threshold_us = mode_parseTimeArg(0, buffer);
+    ticks_t threshold = usToTicks(threshold_us);
+
+    if (threshold > (ticks_t)UINT32_MAX) {
+        userError("EndpointSetBudgetThreshold: Threshold too large.");
+        current_syscall_error.type = seL4_RangeError;
+        current_syscall_error.rangeErrorMin = 0;
+        current_syscall_error.rangeErrorMax = ticksToUs(UINT32_MAX);
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
+    ep_set_budget_threshold(EP_PTR(cap_endpoint_cap_get_capEPPtr(ep_cap)), threshold);
+    return EXCEPTION_NONE;
+}
+#endif // CONFIG_EP_THRESHOLD
+#endif // CONFIG_KERNEL_MCS
