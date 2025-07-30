@@ -201,5 +201,5 @@ void refill_unblock_check(sched_context_t *sc);
 /*
  * Mering refills until the head refill has at least `min_budget` budget.
  */
-void refill_merge_until_budget(sched_context_t *sc, ticks_t min_budget);
+bool_t refill_merge_until_budget(sched_context_t *sc, ticks_t min_budget);
 
