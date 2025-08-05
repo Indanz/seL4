@@ -473,29 +473,8 @@ static void handleRecv(bool_t isBlocking)
     }
 }
 
-#ifdef CONFIG_KERNEL_MCS
-static inline void mcsPreemptionPoint(void)
-{
-    /* at this point we could be handling a timer interrupt which actually ends the current
-     * threads timeslice. However, preemption is possible on revoke, which could have deleted
-     * the current thread and/or the current scheduling context, rendering them invalid. */
-    if (isSchedulable(NODE_STATE(ksCurThread))) {
-        /* if the thread is schedulable, the tcb and scheduling context are still valid */
-        checkBudget();
-    } else if (sc_active(NODE_STATE(ksCurSC))) {
-        /* otherwise, if the thread is not schedulable, the SC could be valid - charge it if so */
-        chargeBudget(NODE_STATE(ksConsumed), false);
-    } else {
-        /* If the current SC is no longer configured the time can no
-         * longer be charged to it. Simply dropping the consumed time
-         * here is equivalent to having charged the consumed time and
-         * then having cleared the SC. */
-        NODE_STATE(ksConsumed) = 0;
-    }
-}
-#else
+#ifndef CONFIG_KERNEL_MCS
 #define handleRecv(isBlocking, canReply) handleRecv(isBlocking)
-#define mcsPreemptionPoint()
 #define handleInvocation(isCall, isBlocking, canDonate, firstPhase, cptr) handleInvocation(isCall, isBlocking)
 #endif
 
@@ -517,43 +496,19 @@ static void handleYield(void)
 
 exception_t handleSyscall(syscall_t syscall)
 {
-    exception_t ret;
-    irq_t irq;
     MCS_DO_IF_BUDGET({
         switch (syscall)
         {
         case SysSend:
-            ret = handleInvocation(false, true, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
-            if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
-            }
-
+            handleInvocation(false, true, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             break;
 
         case SysNBSend:
-            ret = handleInvocation(false, false, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
-            if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
-            }
+            handleInvocation(false, false, false, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             break;
 
         case SysCall:
-            ret = handleInvocation(true, true, true, false, getRegister(NODE_STATE(ksCurThread), capRegister));
-            if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
-            }
+            handleInvocation(true, true, true, false, getRegister(NODE_STATE(ksCurThread), capRegister));
             break;
 
         case SysRecv:
@@ -579,7 +534,7 @@ exception_t handleSyscall(syscall_t syscall)
             break;
         case SysReplyRecv: {
             cptr_t reply = getRegister(NODE_STATE(ksCurThread), replyRegister);
-            ret = handleInvocation(false, false, true, true, reply);
+            exception_t ret = handleInvocation(false, false, true, true, reply);
             /* reply cannot error and is not preemptible */
             assert(ret == EXCEPTION_NONE);
             handleRecv(true, true);
@@ -588,31 +543,22 @@ exception_t handleSyscall(syscall_t syscall)
 
         case SysNBSendRecv: {
             cptr_t dest = getNBSendRecvDest();
-            ret = handleInvocation(false, false, true, true, dest);
+            exception_t ret = handleInvocation(false, false, true, true, dest);
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
                 break;
             }
             handleRecv(true, true);
             break;
         }
 
-        case SysNBSendWait:
-            ret = handleInvocation(false, false, true, true, getRegister(NODE_STATE(ksCurThread), replyRegister));
+        case SysNBSendWait: {
+            exception_t ret = handleInvocation(false, false, true, true, getRegister(NODE_STATE(ksCurThread), replyRegister));
             if (unlikely(ret != EXCEPTION_NONE)) {
-                mcsPreemptionPoint();
-                irq = getActiveIRQ();
-                if (IRQT_TO_IRQ(irq) != IRQT_TO_IRQ(irqInvalid)) {
-                    handleInterrupt(irq);
-                }
                 break;
             }
             handleRecv(true, false);
             break;
+        }
 #endif
         case SysNBRecv:
             handleRecv(false, true);

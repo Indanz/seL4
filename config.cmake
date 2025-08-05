@@ -446,6 +446,12 @@ config_string(
 )
 
 config_option(
+    KernelEPbudgetThreshold EP_THRESHOLD "Enable endpoint budget threshold support."
+    DEFAULT ON
+    DEPENDS "KernelIsMCS; NOT KernelVerificationBuild"
+)
+
+config_option(
     KernelClz32 CLZ_32 "Define a __clzsi2 function to count leading zeros for uint32_t arguments. \
                         Only needed on platforms which lack a builtin instruction." DEFAULT OFF
 )

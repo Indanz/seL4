@@ -155,7 +155,20 @@ void NORETURN fastpath_call(word_t cptr, word_t msgInfo)
     if (unlikely(reply == NULL)) {
         slowpath(SysCall);
     }
-#endif
+    sched_context_t *sc = NODE_STATE(ksCurThread)->tcbSchedContext;
+    // sched_context_t *sc = NODE_STATE(ksCurSC);
+
+#ifdef CONFIG_EP_THRESHOLD
+    ticks_t threshold = ep_get_budget_threshold(ep_ptr);
+    if (!isRoundRobin(sc) && threshold) {
+        updateTimestamp();
+        if (refill_capacity(sc, NODE_STATE(ksConsumed)) < threshold) {
+            slowpath(SysCall);
+        }
+    }
+#endif // CONFIG_EP_THRESHOLD
+
+#endif // CONFIG_KERNEL_MCS
 
 #ifdef ENABLE_SMP_SUPPORT
     /* Ensure both threads have the same affinity */
@@ -192,7 +205,6 @@ void NORETURN fastpath_call(word_t cptr, word_t msgInfo)
     thread_state_ptr_set_replyObject_np(&NODE_STATE(ksCurThread)->tcbState, REPLY_REF(reply));
     reply->replyTCB = NODE_STATE(ksCurThread);
 
-    sched_context_t *sc = NODE_STATE(ksCurThread)->tcbSchedContext;
     sc->scTcb = dest;
     dest->tcbSchedContext = sc;
     NODE_STATE(ksCurThread)->tcbSchedContext = NULL;
