@@ -29,7 +29,10 @@ typedef word_t irq_state_t;
 
 typedef struct dschedule {
     dom_t domain;
-    word_t length;
+#if CONFIG_WORD_SIZE == 32
+    word_t _padding;
+#endif
+    ticks_t length;
 } dschedule_t;
 
 enum asidSizeConstants {
