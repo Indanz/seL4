@@ -18,6 +18,7 @@
 #include <object/cnode.h>
 #include <object/interrupt.h>
 #ifdef CONFIG_KERNEL_MCS
+#include <object/reply.h>
 #include <object/schedcontext.h>
 #include <object/schedcontrol.h>
 #endif
@@ -695,6 +696,11 @@ exception_t decodeInvocation(word_t invLabel, word_t length,
 
 #ifdef CONFIG_KERNEL_MCS
     case cap_reply_cap:
+#ifdef CONFIG_EP_THRESHOLD
+        if (unlikely(call)) {
+            return decodeReplyInvocation(invLabel, length, buffer);
+        }
+#endif
         setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
         return performInvocation_Reply(
                    NODE_STATE(ksCurThread),
@@ -786,10 +792,46 @@ exception_t decodeInvocation(word_t invLabel, word_t length,
 }
 
 #ifdef CONFIG_KERNEL_MCS
+/*
+ * According to commit a2ec92a2f, there are no overlapping heads any more.
+ * Only refill_unblock_check() creates overlaps, but fixes them immediately.
+ * Even if there is, the task will be scheduled again and retry the call,
+ * so it is safe to not check for this corner case either way.
+ */
+static exception_t ep_check_budget(endpoint_t *ep, bool_t canDonate, bool_t block)
+{
+#ifdef CONFIG_EP_THRESHOLD
+    sched_context_t *sc = NODE_STATE(ksCurSC);
+    word_t threshold = ep_get_budget_threshold(ep);
+
+    if (!isRoundRobin(sc) && threshold && canDonate && refill_capacity(sc, 0) < threshold) {
+        /* Non-blocking send, fail silently */
+        if (!block) {
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        commitTime();
+        if (refill_merge_until_budget(sc, threshold)) {
+            endTimeslice(true);
+            return EXCEPTION_PREEMPTED;
+        } else {
+            /* Never enough budget  */
+            userError("Not enough budget to call endpoint with budget threshold");
+            current_syscall_error.type = seL4_IllegalOperation;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+    }
+#endif
+    return EXCEPTION_NONE;
+}
+
 exception_t performInvocation_Endpoint(endpoint_t *ep, word_t badge,
                                        bool_t canGrant, bool_t canGrantReply,
                                        bool_t block, bool_t call, bool_t canDonate)
 {
+    exception_t status = ep_check_budget(ep, canDonate, block);
+    if (status != EXCEPTION_NONE) {
+        return status;
+    }
     sendIPC(block, call, badge, canGrant, canGrantReply, canDonate, NODE_STATE(ksCurThread), ep);
 
     return EXCEPTION_NONE;

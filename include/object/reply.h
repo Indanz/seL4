@@ -35,3 +35,4 @@ void reply_remove(reply_t *reply, tcb_t *tcb);
 /* Remove a specific tcb, and the reply it is blocking on, from the call stack */
 void reply_remove_tcb(tcb_t *tcb);
 
+exception_t decodeReplyInvocation(word_t label, word_t length, word_t *buffer);

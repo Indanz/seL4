@@ -649,8 +649,6 @@ void chargeBudget(ticks_t consumed, bool_t canTimeoutFault)
     if (likely(isSchedulable(NODE_STATE(ksCurThread)))) {
         assert(NODE_STATE(ksCurThread)->tcbSchedContext == NODE_STATE(ksCurSC));
         endTimeslice(canTimeoutFault);
-        rescheduleRequired();
-        NODE_STATE(ksReprogram) = true;
     }
 }
 
@@ -670,6 +668,8 @@ void endTimeslice(bool_t can_timeout_fault)
         /* postpone until ready */
         postpone(NODE_STATE(ksCurSC));
     }
+    rescheduleRequired();
+    NODE_STATE(ksReprogram) = true;
 }
 #else
 

@@ -134,3 +134,19 @@ void reply_remove_tcb(tcb_t *tcb)
     reply->replyNext = call_stack_new(0, false);
     reply_unlink(reply, tcb);
 }
+
+#ifdef CONFIG_EP_THRESHOLD
+#include <object/endpoint.h>
+
+NO_INLINE exception_t decodeReplyInvocation(word_t label, word_t length, word_t *buffer)
+{
+    switch (label) {
+    case EndpointSetBudgetThreshold:
+        return ep_decodeSetBudgetThreshold(length, length, buffer);
+    default:
+        userError("Reply invocation: Illegal operation attempted.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+}
+#endif

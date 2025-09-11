@@ -347,6 +347,17 @@ void refill_budget_check(ticks_t usage)
     REFILL_SANITY_END(sc);
 }
 
+bool_t refill_merge_until_budget(sched_context_t *sc, ticks_t min_budget)
+{
+    while (refill_capacity(sc, 0) < min_budget) {
+        if (refill_single(sc)) {
+            return false;
+        }
+        merge_nonoverlapping_head_refill(sc);
+    }
+    return true;
+}
+
 static inline void merge_overlapping_head_refill(sched_context_t *sc)
 {
     refill_t old_head = refill_pop_head(sc);

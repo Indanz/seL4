@@ -43,3 +43,26 @@ void cancelBadgedSends(endpoint_t *epptr, word_t badge);
 void replyFromKernel_error(tcb_t *thread);
 void replyFromKernel_success_empty(tcb_t *thread);
 
+#ifdef CONFIG_EP_THRESHOLD
+exception_t ep_decodeSetBudgetThreshold(word_t invLabel, word_t length, word_t *buffer);
+
+/* Needed because fields can't cross word boundaries in bf... */
+static inline ticks_t ep_get_budget_threshold(endpoint_t *ep)
+{
+    uint16_t low = endpoint_ptr_get_budget_threshold_low(ep);
+    uint16_t high = endpoint_ptr_get_budget_threshold_high(ep);
+
+    return (high << 16) | low;
+}
+
+static inline void ep_set_budget_threshold(endpoint_t *ep, uint32_t threshold)
+{
+    uint16_t low = threshold & 0xff;
+    uint16_t high = (threshold >> 16) & 0xff;
+
+    endpoint_ptr_set_budget_threshold_high(ep, high);
+    endpoint_ptr_set_budget_threshold_low(ep, low);
+}
+
+#endif
+

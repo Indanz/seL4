@@ -1544,4 +1544,45 @@
         </method>
     </interface>
 
+    <interface name="seL4_ReplyCap" manual_name="Reply" cap_description="CPtr to a Reply object.">
+        <method id="EndpointSetBudgetThreshold" name="SetBudgetThreshold" manual_label="ep_set_budget_threshold">
+            <condition><config var="CONFIG_KERNEL_MCS"/></condition>
+            <brief>
+                Sets the budget threshold value of an endpoint.
+            </brief>
+            <description>
+                This configures the minimum amount of budget sporadic threads need to have before calls
+                to the endpoint will proceed. If, at the time of the call, there is not enough remaining
+                budget to pass the threshold, the caller will either timeout fault or be postponed till
+                it has enough budget. Once the caller has enough budget, the call will proceed normally.
+
+                This can be used to avoid running out of budget during calls, ensuring that passive
+                servers do not timeout fault or get postponed, as long as they stay within the threshold
+                budget.
+
+                Round-robin callers are not checked because they cannot run out of budget.
+
+                This is a Reply invocation as for endpoints it would be indistinguishable from IPC calls.
+            </description>
+            <return><errorenumdesc/></return>
+            <param dir="in" name="endpoint" type="seL4_CPtr" description="CPtr to an Endpoint with Read permission."/>
+            <param dir="in" name="threshold" type="seL4_Time" description="Value of the budget threshold to set."/>
+            <error name="seL4_IllegalOperation">
+                <description>
+                    The <texttt text="_service"/> is a CPtr to a capability of the wrong type.
+                </description>
+            </error>
+            <error name="seL4_InvalidCapability">
+                <description>
+                    <texttt text="endpoint"/> does not have Read right.
+                    Or, <texttt text="endpoint"/> is not valid or the wrong type.
+                </description>
+            </error>
+            <error name="seL4_RangeError">
+                <description>
+                    The <texttt text="threshold"/> is too large.
+                </description>
+            </error>
+        </method>
+    </interface>
 </api>
