@@ -52,10 +52,7 @@ word_t getObjectSize(word_t t, word_t userObjSize);
 
 static inline void postCapDeletion(cap_t cap)
 {
-    if (cap_get_capType(cap) == cap_irq_handler_cap) {
-        irq_t irq = IDX_TO_IRQT(cap_irq_handler_cap_get_capIRQ(cap));
-        deletedIRQHandler(irq);
-    } else if (isArchCap(cap)) {
+    if (isArchCap(cap)) {
         Arch_postCapDeletion(cap);
     }
 }

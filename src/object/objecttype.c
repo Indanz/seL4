@@ -247,10 +247,10 @@ finaliseCap_ret_t finaliseCap(cap_t cap, bool_t final, bool_t exposed)
         if (final) {
             irq_t irq = IDX_TO_IRQT(cap_irq_handler_cap_get_capIRQ(cap));
 
-            deletingIRQHandler(irq);
+            deleteIRQHandler(irq);
 
             fc_ret.remainder = cap_null_cap_new();
-            fc_ret.cleanupInfo = cap;
+            fc_ret.cleanupInfo = cap_null_cap_new();
             return fc_ret;
         }
         break;
