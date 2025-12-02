@@ -52,7 +52,7 @@ static inline ticks_t ep_get_budget_threshold(endpoint_t *ep)
     uint16_t low = endpoint_ptr_get_budget_threshold_low(ep);
     uint16_t high = endpoint_ptr_get_budget_threshold_high(ep);
 
-    return (high << 16) | low;
+    return ((ticks_t)high << 16) | low;
 }
 
 static inline void ep_set_budget_threshold(endpoint_t *ep, uint32_t threshold)
