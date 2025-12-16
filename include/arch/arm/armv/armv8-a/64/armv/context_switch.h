@@ -12,7 +12,7 @@
 
 static inline void armv_contextSwitch_HWASID(vspace_root_t *vspace, asid_t asid)
 {
-    setCurrentUserVSpaceRoot(ttbr_new(asid, pptr_to_paddr(vspace)));
+    setCurrentUserVSpaceRoot(ttbr_new(asid, pptr_to_paddr(vspace)), true);
 }
 
 /*
@@ -24,6 +24,6 @@ static inline void armv_contextSwitch(vspace_root_t *vspace, asid_t asid)
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
     asid = getHWASID(asid);
 #endif
-    setCurrentUserVSpaceRoot(ttbr_new(asid, pptr_to_paddr(vspace)));
+    setCurrentUserVSpaceRoot(ttbr_new(asid, pptr_to_paddr(vspace)), true);
 }
 

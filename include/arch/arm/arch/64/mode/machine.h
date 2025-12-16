@@ -176,7 +176,7 @@ static inline void setCurrentKernelVSpaceRoot(ttbr_t ttbr)
     isb();
 }
 
-static inline void setCurrentUserVSpaceRoot(ttbr_t ttbr)
+static inline void setCurrentUserVSpaceRoot(ttbr_t ttbr, bool_t switch_immediately)
 {
     dsb();
     if (config_set(CONFIG_ARM_HYPERVISOR_SUPPORT)) {
@@ -184,7 +184,9 @@ static inline void setCurrentUserVSpaceRoot(ttbr_t ttbr)
     } else {
         MSR("ttbr0_el1", ttbr.words[0]);
     }
-    isb();
+    if (switch_immediately) {
+        isb();
+    }
 }
 
 static inline word_t getVTTBR(void)

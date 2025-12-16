@@ -36,7 +36,12 @@ switchToThread_fp(tcb_t *thread, vspace_root_t *vroot, pde_t stored_hw_asid)
         vcpu_switch(thread->tcbArch.tcbVCPU);
     }
     asid = (asid_t)(stored_hw_asid.words[0] & 0xffff);
-    armv_contextSwitch_HWASID(vroot, asid);
+    /*
+     * Applying the VSpace change when returning to user space is sufficient,
+     * no need to do this immediately for a normal fastpath context switch.
+     * The extra ISB would be expensive because of the pipeline flush.
+     */
+    setCurrentUserVSpaceRoot(ttbr_new(asid, pptr_to_paddr(vroot)), false);
 
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
     benchmark_utilisation_switch(NODE_STATE(ksCurThread), thread);

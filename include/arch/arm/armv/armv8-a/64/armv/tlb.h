@@ -20,14 +20,14 @@ static inline void invalidateLocalTLB_VMID(word_t vmid)
      * fine. Otherwise, an ASID lookup is required.
      */
     if (v != vmid) {
-        setCurrentUserVSpaceRoot(ttbr_new(vmid, 0));
+        setCurrentUserVSpaceRoot(ttbr_new(vmid, 0), true);
     }
     invalidateLocalTLB_VMALLS12E1();
     if (v != vmid) {
         /* Restore the previous VTTBR value */
         setCurrentUserVSpaceRoot((ttbr_t) {
             .words[0] = vttbr
-        });
+        }, true);
     }
 }
 
@@ -40,13 +40,13 @@ static inline void invalidateLocalTLB_IPA_VMID(word_t ipa_plus_vmid)
     word_t ipa = ipa_plus_vmid & 0xfffffffff;
     dsb();
     if (v != vmid) {
-        setCurrentUserVSpaceRoot(ttbr_new(vmid, 0));
+        setCurrentUserVSpaceRoot(ttbr_new(vmid, 0), true);
     }
     invalidateLocalTLB_IPA(ipa);
     if (v != vmid) {
         setCurrentUserVSpaceRoot((ttbr_t) {
             .words[0] = vttbr
-        });
+        }, true);
     }
 }
 
