@@ -19,8 +19,14 @@
  * capFreeIndex counts in chunks of size 2^seL4_MinUntypedBits. The seL4_MaxUntypedBits
  * is the minimal untyped that can be stored when considering both how
  * many bits of capBlockSize there are, and the largest offset that can
- * be stored in capFreeIndex */
-#define MAX_FREE_INDEX(sizeBits) (BIT((sizeBits) - seL4_MinUntypedBits))
+ * be stored in capFreeIndex.
+ * The stored number is actually (FreeIndex - 1), so that we can encode an untyped being
+ * full in (seL4_MaxUntypedBits - seL4_MinUntypedBits) bits. Note that a zero FreeIndex
+ * cannot be stored in this encoding. That is okay because the stored FreeIndex is ignored
+ * when there are no child objects.
+ */
+#define MAX_FREE_INDEX(sizeBits) MASK((sizeBits) - seL4_MinUntypedBits)
+
 #define FREE_INDEX_TO_OFFSET(freeIndex) ((freeIndex)<<seL4_MinUntypedBits)
 #define GET_FREE_REF(base,freeIndex) ((word_t)(((word_t)(base)) + FREE_INDEX_TO_OFFSET(freeIndex)))
 #define GET_FREE_INDEX(base,free) (((word_t)(free) - (word_t)(base))>>seL4_MinUntypedBits)

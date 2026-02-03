@@ -15,9 +15,10 @@ block null_cap {
 }
 
 -- The combination of freeIndex and blockSize must match up with the
--- definitions of MIN_SIZE_BITS and MAX_SIZE_BITS
+-- definitions of seL4_MinUntypedBits and seL4_MaxUntypedBits.
 block untyped_cap {
-    field capFreeIndex 26
+    field capFreeIndex 25
+    field padding      1
     field capIsDevice  1
     field capBlockSize 5
 

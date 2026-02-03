@@ -181,7 +181,7 @@ exception_t decodeUntypedInvocation(word_t invLabel, word_t length, cte_t *slot,
      */
     status = ensureNoChildren(slot);
     if (status != EXCEPTION_NONE) {
-        freeIndex = cap_untyped_cap_get_capFreeIndex(cap);
+        freeIndex = 1 + cap_untyped_cap_get_capFreeIndex(cap);
         reset = false;
     } else {
         freeIndex = 0;
@@ -254,8 +254,11 @@ static exception_t resetUntypedCap(cte_t *srcSlot)
         if (! deviceMemory) {
             clearMemory(regionBase, block_size);
         }
-        srcSlot->cap = cap_untyped_cap_set_capFreeIndex(prev_cap, 0);
     } else {
+        /* The reset code doesn't use the off-by-one freeIndex, as it needs to reach zero.
+         * The first run effectively uses offset - seL4_MinUntypedBits and rounds that
+         * down, which is safe to do if CONFIG_RESET_CHUNK_BITS is big enough. */
+        assert(chunk > seL4_MinUntypedBits);
         for (offset = ROUND_DOWN(offset - 1, chunk);
              offset != - BIT(chunk); offset -= BIT(chunk)) {
             clearMemory(GET_OFFSET_FREE_PTR(regionBase, offset), chunk);
@@ -276,6 +279,7 @@ exception_t invokeUntyped_Retype(cte_t *srcSlot,
                                  bool_t deviceMemory)
 {
     word_t freeRef;
+    word_t freeIndex;
     word_t totalObjectSize;
     void *regionBase = WORD_PTR(cap_untyped_cap_get_capPtr(srcSlot->cap));
     exception_t status;
@@ -294,8 +298,8 @@ exception_t invokeUntyped_Retype(cte_t *srcSlot,
      * transformed by getObjectSize. */
     totalObjectSize = destLength << getObjectSize(newType, userSize);
     freeRef = (word_t)retypeBase + totalObjectSize;
-    srcSlot->cap = cap_untyped_cap_set_capFreeIndex(srcSlot->cap,
-                                                    GET_FREE_INDEX(regionBase, freeRef));
+    freeIndex = GET_FREE_INDEX(regionBase, freeRef);
+    srcSlot->cap = cap_untyped_cap_set_capFreeIndex(srcSlot->cap, freeIndex - 1);
 
     /* Create new objects and caps. */
     createNewObjects(newType, srcSlot, destCNode, destOffset, destLength,
