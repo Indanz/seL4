@@ -50,11 +50,12 @@ block vspace_cap {
 
     field capType                    5
     field capVSIsMapped              1
+    field capSize                    6
+    padding                          44
 #ifdef CONFIG_ARM_SMMU
     field capVSMappedCB              8
-    padding                          50
 #else
-    padding                          58
+    padding                          8
 #endif
 }
 

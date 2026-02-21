@@ -13,13 +13,33 @@ block null_cap {
 
 block untyped_cap {
     field capFreeIndex  canonical_size
-    padding             word_size - canonical_size - 1 - 6
+    padding             word_size - canonical_size - 1 - 1 - 6
+    field capIsMapped   1
     field capIsDevice   1
     field capBlockSize  6
 
     field capType       5
     field_ptr capPtr    word_size - 5
 }
+
+block mapped_untyped_cap {
+    field_ptr capVA(21) word_size - 16 - 6 - 2 - 1 - 1 - 6 -- 32 bits
+    field capASID       16 -- Or store in metadata
+    field capVSize      6
+    field capVLevel     2
+    field capIsMapped   1
+    field capIsDevice   1
+    field capBlockSize  6
+
+    field capType       5
+    field_ptr capPtr    word_size - 5
+}
+
+-- This would rename all accessor functions used everywhere, breaking a lot of code:
+-- tagged_union ut_cap capIsMapped {
+--    tag untyped_cap        0
+--    tag mapped_untyped_cap 1
+--}
 
 block endpoint_cap(capEPBadge, capCanGrantReply, capCanGrant, capCanSend,
                    capCanReceive, capEPPtr, capType) {

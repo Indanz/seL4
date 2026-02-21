@@ -619,6 +619,13 @@ static finaliseSlot_ret_t finaliseSlot(cte_t *slot, bool_t immediate)
     exception_t status;
     finaliseSlot_ret_t ret;
 
+    // Could be more generic if we use one extra bit in mdb_node_t.
+    // Must be here because finaliseCap() does not have access to the slot.
+    if (cap_get_capType(slot->cap) == cap_untyped_cap &&
+        cap_untyped_cap_get_capIsMapped(slot->cap)) {
+        /* The untyped cap is embedded in a VSpace object: */
+        arch_vspace_finalise_untyped_slot(slot);
+    }
     while (cap_get_capType(slot->cap) != cap_null_cap) {
         final = isFinalCapability(slot);
         fc_ret = finaliseCap(slot->cap, final, false);

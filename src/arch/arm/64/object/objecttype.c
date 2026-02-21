@@ -342,7 +342,7 @@ bool_t CONST Arch_sameObjectAs(cap_t cap_a, cap_t cap_b)
     return Arch_sameRegionAs(cap_a, cap_b);
 }
 
-word_t Arch_getObjectSize(word_t t)
+word_t Arch_getObjectSize(word_t t, word_t userObjSize)
 {
     switch (t) {
     case seL4_ARM_SmallPageObject:
@@ -354,7 +354,7 @@ word_t Arch_getObjectSize(word_t t)
     case seL4_ARM_PageTableObject:
         return seL4_PageTableBits;
     case seL4_ARM_VSpaceObject:
-        return seL4_VSpaceBits;
+        return userObjSize > seL4_VSpaceBits ? userObjSize : seL4_VSpaceBits;
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
     case seL4_ARM_VCPUObject:
         return VCPU_SIZE_BITS;
@@ -452,20 +452,18 @@ cap_t Arch_createObject(object_t t, void *regionBase, word_t userSize, bool_t de
         cleanCacheRange_PoU((word_t)regionBase,
                             (word_t)regionBase + MASK(seL4_VSpaceBits),
                             addrFromPPtr(regionBase));
-#ifdef CONFIG_ARM_SMMU
+        /* Extra space for embedded cte_t array for direct untyped mappings
+         * is already zeroed by generic untyped code. */
+        word_t size = Arch_getObjectSize(seL4_ARM_VSpaceObject, userSize);
         return cap_vspace_cap_new(
                    asidInvalid,           /* capVSMappedASID */
                    (word_t)regionBase,    /* capVSBasePtr    */
                    0,                     /* capVSIsMapped   */
-                   CB_INVALID             /* capVSMappedCB   */
+                   size                   /* capSize         */
+#ifdef CONFIG_ARM_SMMU
+                   , CB_INVALID           /* capVSMappedCB   */
+#endif
                );
-#else
-        return cap_vspace_cap_new(
-                   asidInvalid,           /* capVSMappedASID */
-                   (word_t)regionBase,    /* capVSBasePtr    */
-                   0                      /* capVSIsMapped   */
-               );
-#endif /*!CONFIG_ARM_SMMU*/
     case seL4_ARM_PageTableObject:
         /** AUXUPD: "(True, ptr_retyps 1
               (Ptr (ptr_val \<acute>regionBase) :: (pte_C[pt_array_len]) ptr))" */

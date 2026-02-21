@@ -33,7 +33,7 @@
 word_t getObjectSize(word_t t, word_t userObjSize)
 {
     if (t >= seL4_NonArchObjectTypeCount) {
-        return Arch_getObjectSize(t);
+        return Arch_getObjectSize(t, userObjectSize);
     } else {
         switch (t) {
         case seL4_TCBObject:
@@ -79,11 +79,17 @@ deriveCap_ret_t deriveCap(cte_t *slot, cap_t cap)
         break;
 
     case cap_untyped_cap:
-        ret.status = ensureNoChildren(slot);
-        if (ret.status != EXCEPTION_NONE) {
-            ret.cap = cap_null_cap_new();
-        } else {
-            ret.cap = cap;
+        ret.status = EXCEPTION_NONE;
+        ret.cap = cap;
+        if (ensureNoChildren(slot) != EXCEPTION_NONE) {
+            cte_t *next = CTE_PTR(mdb_node_get_mdbNext(slot->cteMDBNode));
+
+            /* Untyped has children: Make sure it are just mapped UT cap copies: */
+            if (cap_get_capType(next->cap) != cap_untyped_cap ||
+                !cap_untyped_cap_get_capIsMapped(next->cap)) {
+                ret.status = EXCEPTION_SYSCALL_ERROR;
+                ret.cap = cap_null_cap_new();
+            }
         }
         break;
 

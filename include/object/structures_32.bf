@@ -18,7 +18,7 @@ block null_cap {
 -- definitions of seL4_MinUntypedBits and seL4_MaxUntypedBits.
 block untyped_cap {
     field capFreeIndex 25
-    field padding      1
+    field capIsMapped  1
     field capIsDevice  1
     field capBlockSize 5
 

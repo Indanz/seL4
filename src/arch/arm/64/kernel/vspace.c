@@ -485,8 +485,9 @@ BOOT_CODE cap_t create_it_address_space(cap_t root_cnode_cap, v_region_t it_v_re
                      IT_ASID,           /* capVSMappedASID */
                      rootserver.vspace, /* capVSBasePtr    */
                      1                  /* capVSIsMapped   */
+                     seL4_VSpaceBits    /* capSize         */
 #ifdef CONFIG_ARM_SMMU
-                     , 0                /* capVSMappedCB   */
+                     , CB_INVALID       /* capVSMappedCB   */
 #endif
                  );
     slot_pos_before = ndks_boot.slot_pos_cur;
@@ -1142,6 +1143,51 @@ static void doFlush(word_t invLabel, vptr_t start, vptr_t end, paddr_t pstart)
     }
 }
 
+void arch_vspace_finalise_untyped_slot(const cte_t *slot)
+{
+    asid_t asid;
+    vspace_root_t *vspace;
+    cap_t cap = slot->cap;
+    findVSpaceForASID_ret_t find_ret;
+    word_t vsize = cap_mapped_untyped_cap_get_capVSize(cap);
+    word_t level = cap_mapped_untyped_cap_get_capVLevel(cap);
+    vptr_t vaddr = cap_mapped_untyped_cap_get_capVA(cap);
+    vptr_t begin = cap_mapped_untyped_cap_get_capPtr(cap);
+    vptr_t end = begin + MASK(cap_mapped_untyped_cap_get_capBlockSize(cap));
+
+    /* Retrieve the enclosing VSpace object the slot is in: */
+    vspace = (vspace_root_t*)ROUND_DOWN((word_t)slot, vsize);
+
+    /* Check if whole VSpace is already unmapped: */
+    asid = cap_mapped_untyped_cap_get_capASID(vspace);
+    find_ret = findVSpaceForASID(asid);
+    if (find_ret.status != EXCEPTION_NONE || find_ret.vspace_root != vspace) {
+        return;
+    }
+    /* Find the PT with mappings from this cap: */
+    pte_t *pt = vspace;
+    for (word_t i = 0; i < ULVL_FRM_ARM_PT_LVL(level); ++i) {
+        pt += GET_UPT_INDEX(vaddr, i);
+        if (!pte_pte_table_ptr_get_present(pt)) {
+            /* Nothing to unmap */
+            return;
+        }
+        pt = paddr_to_pptr(pte_pte_table_ptr_get_pt_base_address(pt));
+    }
+    /* Unmap pages that fall within the untyped */
+    for (unsigned int i = 0; i < BIT(UPT_INDEX_MASK(level)): ++i) {
+        vptr_t paddr = (vptr_t)paddr_to_pptr(pte_pte_table_ptr_get_pt_base_address(pt[i]));
+        if (begin <= paddr && paddr <= end) {
+            pt[i] = pte_pte_invalid_new();
+        }
+    }
+    // TLB reads from the data cache, no need for cache maintenance:
+    //cleanCacheRange_PoU((vptr_t)pt, (vptr_t)pt + MASK(UPT_INDEX_MASK(level)),
+    //                    pptr_to_paddr(pt) /* unused argument */);
+    /* Keep things simple and robust: */
+    invalidateTLBByASID(asid);
+}
+
 /* ================= INVOCATION HANDLING STARTS HERE ================== */
 
 static exception_t performVSpaceFlush(word_t invLabel, vspace_root_t *vspaceRoot, asid_t asid,
@@ -1298,6 +1344,227 @@ static exception_t performASIDControlInvocation(void *frame, cte_t *slot,
     return EXCEPTION_NONE;
 }
 
+static bool_t checkArgs(vspace_root_t *vspace, asid_t asid cap_t cap, vptr_t start, vptr_t end)
+{
+    findVSpaceForASID_ret_t find_ret;
+
+    /* Check sanity of arguments */
+    if (end <= start) {
+        userError("VSpaceRoot: Invalid range.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 1;
+        return false;
+    }
+
+    /* Don't let applications affect kernel regions. */
+    if (end > USER_TOP) {
+        userError("VSpaceRoot: Exceed the user addressable region.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return false;
+    }
+
+    if (unlikely(!isValidNativeRoot(cap))) {
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 0;
+        return false;
+    }
+
+    /* Make sure that the supplied pgd is ok */
+    find_ret = findVSpaceForASID(asid);
+    if (unlikely(find_ret.status != EXCEPTION_NONE)) {
+        userError("VSpaceRoot Flush: No VSpace for ASID");
+        current_syscall_error.type = seL4_FailedLookup;
+        current_syscall_error.failedLookupWasSource = false;
+        return false;
+    }
+
+    if (unlikely(find_ret.vspace_root != vspace)) {
+        userError("VSpaceRoot Flush: Invalid VSpace Cap");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 0;
+        return false;
+    }
+    return true;
+}
+
+/*
+ * Hash the PT virtual address for quicker lookup of a vmeta index.
+ * Returns an index between 0 and max:
+ */
+static inline uint32_t vmeta_get_offset(word_t seed, uint32_t max)
+{
+    uint32_t i = ut_start * 2654435769;
+
+    /* May not be power-of-two: */
+    return i % max;
+}
+
+static inline bool_t check_vmeta_cap(cap_t cap, vptr_t ut_start, vptr_t capVA)
+{
+    return cap_get_capType(cap) == cap_untyped_cap &&
+           cap_mapped_untyped_cap_get_capPtr(cap) == ut_start &&
+           cap_mapped_untyped_cap_get_capVA(cap) == capVA;
+}
+
+static void performVSpaceMap(vspace_root_t *vspace, asid_t asid, cte_t *ut_cte,
+                             cte_t *slot, vptr_t capVA, vptr_t vaddr, vptr_t vend,
+                             vm_rights_t rights, vm_attributes_t attr, vptr_t vpaddr,
+                             lookupPTSlot_ret_t lu_ret)
+{
+    /*TODO;
+    - Mark UT full. Already done when copying/deriving the cap?
+    - Copy/derive cap into vspace.
+    - Update mapped UT cap info.
+    - makeUserPagePTE() for each mapping
+    */
+    invalidateTLBByASID(asid);
+}
+
+/* seL4_ARMVSpace_Map(vspace, vaddr, rights, attr, untyped, paddr, size) */
+// see also decodeARMFrameInvocation
+static exception_t decodeARMVSpaceMap(word_t *buffer, word_t length, cte_t *cte, cap_t cap)
+{
+    vptr_t vaddr, vend;
+    vm_rights_t rights;
+    vm_attributes_t attr;
+    cap_t ut_cap;
+    vptr_t vpaddr, ut_start, ut_end;
+    word_t size, ut_size;
+    vspace_root_t *vspace;
+    asid_t asid;
+    cte_t *ut_cte = current_extra_caps.excaprefs[0];
+    lookupPTSlot_ret_t lu_ret;
+
+    if (length < 5 || ut_cte == NULL) {
+        userError("VSpace Map: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    vaddr = getSyscallArg(0, buffer);
+    rights = maskVMRights(VMReadWrite, rightsFromWord(getSyscallArg(1, buffer)));
+    attr = vmAttributesFromWord(getSyscallArg(2, buffer));
+    ut_cap = ut_cte->cap;
+    vpaddr = (vptr_t)paddr_to_pptr(getSyscallArg(3, buffer));
+    size = getSyscallArg(4, buffer);
+    vend = start + size;
+
+    vspace = VSPACE_PTR(cap_vspace_cap_get_capVSBasePtr(cap));
+    asid = cap_vspace_cap_get_capVSMappedASID(cap);
+
+    if (!checkArgs(vspace, asid, cap, vaddr, vend)) {
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    if (rights == VMKernelOnly) {
+        userError("VSpace Map: Missing read or write rights.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 1;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    /* Check untyped: */
+    if (cap_get_capType(ut_cap) != cap_untyped_cap) {
+        userError("VSpace Map: Not an untyped cap.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 0;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    deriveCap_ret_t dc_ret = deriveCap(ut_cte, ut_cap);
+    if (dc_ret.status != EXCEPTION_NONE && !cap_untyped_cap_get_capIsDevice(ut_cap)) {
+        userError("VSpace Map: Untyped not free.");
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    ut_start = cap_untyped_cap_get_capPtr(ut_cap);
+    ut_size = MASK(cap_untyped_cap_get_capBlockSize(ut_cap));
+    ut_end = ut_start + ut_size;
+    if (vpaddr < ut_paddr || vpaddr >= ut_end) {
+        userError("VSpace Map: Physical address not inside untyped.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 3;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    if (size > ut_size || vpaddr >= ut_end - size) {
+        userError("VSpace Map: Not enough space in untyped.");
+        current_syscall_error.type = seL4_NotEnoughMemory;
+        current_syscall_error.memoryLeft = ut_end - vpaddr + 1;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    /* Check that necessary PT is present: */
+    lu_ret = lookupPTSlot(vspace, vaddr);
+    word_t pz = lu_ret.ptBitsLeft;
+    vptr_t capVA = ROUND_DOWN(vaddr, pz + PT_INDEX_BITS);
+
+    /* Check if the slots are in the same PT: */
+    if (capVA != ROUND_DOWN(vend, pz + PT_INDEX_BITS)) {
+        userError("VSpace Map: Virtual address range not within one page table.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 3;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    /* Check if address is not properly aligned or a PT is missing: */
+    if ((vaddr & MASK(pz)) || (vend & MASK(pz))) {
+        userError("VSpace Map: Address not aligned or page table missing.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 3;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    /* Check if address is already mapped: */
+    for (word_t i = 0; i < (vend - vstart) / BIT(pz); ++i) {
+        if (pte_pte_table_ptr_get_present(lu_ret.ptSlot + i)) {
+            current_syscall_error.type = seL4_RangeError;
+            current_syscall_error.rangeErrorMin = vaddr + i * BIT(pz);
+            current_syscall_error.rangeErrorMax = current_syscall_error.rangeErrorMin + BIT(pz);
+            userError("VSpace Map: Address already mapped at [0x%lx..0x%lx)",
+                      current_syscall_error.rangeErrorMin, current_syscall_error.rangeErrorMax);
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+    }
+    /* Find mapped UT cap or free slot in the embedded CNode: */
+    cte_t *vmetaslot = NULL;
+    cte_t *firstfreeslot = NULL;
+    word_t vsize = cap_mapped_untyped_cap_get_capVSize(cap);
+    cte_t *vmeta = CTE_PTR(vspace + 1); // metadata is after the regular vspace
+    word_t vmeta_entries = (BIT(vsize) - sizeof(vspace)) / sizeof(vmeta[0]);
+    uint32_t off = vmeta_get_offset(capVA, meta_entries);
+
+    for (word_t n = 0, i = off; n < vmeta_entries; ++n, ++i) {
+        if (i == vmeta_entries) {
+            i = 0;
+        }
+        cap_tag_t type = cap_get_capType(pvmeta[i].cap);
+
+        if (check_vmeta_cap(pvmeta[i].cap, ut_start, capVA)) {
+            vmetaslot = &pvmeta[i];
+            break;
+        } else if (!firstfreeslot && type == cap_null_cap) {
+            firstfreeslot = &pvmeta[i];
+            //TODO: For proper linear probing deleted entries are cleaned up or distinguishable.
+            //We need to initialise the VSpace metadata to non-zero to achieve this.
+            if (type == cap_zombie_cap) {
+                break;
+            }
+        }
+    }
+    if (!vmetaslot && !firstfreeslot) {
+        userError("VSpace Map: Not enough space for metadata in VSpace.");
+        current_syscall_error.type = seL4_NotEnoughMemory;
+        current_syscall_error.memoryLeft = 0;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    if (vmetaslot && firstfreeslot) {
+        /* Poor man's garbage collection: */
+        cteSwap(vmetaslot->cap, vmetaslot, firstfreeslot->cap, firstfreeslot);
+        vmetaslot = firstfreeslot;
+    } else if (!vmetaslot) {
+        vmetaslot = firstfreeslot;
+    }
+    setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
+    return performVSpaceMap(vspace, asid, ut_cte, slot, capVA, vaddr, vend, rights, attr, vpaddr);
+}
+
+/* seL4_ARMVSpace_Unmap(vspace, vaddr, size) */
+static exception_t decodeARMVSpaceUnmap(word_t *buffer, word_t length, cte_t *cte, cap_t cap)
+{
+}
+
 static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
                                                  cte_t *cte, cap_t cap, word_t *buffer)
 {
@@ -1306,7 +1573,6 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
     asid_t asid;
     vspace_root_t *vspaceRoot;
     lookupPTSlot_ret_t resolve_ret;
-    findVSpaceForASID_ret_t find_ret;
     pte_t pte;
 
     switch (invLabel) {
@@ -1324,46 +1590,12 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
         start = getSyscallArg(0, buffer);
         end =   getSyscallArg(1, buffer);
 
-        /* Check sanity of arguments */
-        if (end <= start) {
-            userError("VSpaceRoot Flush: Invalid range.");
-            current_syscall_error.type = seL4_InvalidArgument;
-            current_syscall_error.invalidArgumentNumber = 1;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-
-        /* Don't let applications flush kernel regions. */
-        if (end > USER_TOP) {
-            userError("VSpaceRoot Flush: Exceed the user addressable region.");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-
-        if (unlikely(!isValidNativeRoot(cap))) {
-            current_syscall_error.type = seL4_InvalidCapability;
-            current_syscall_error.invalidCapNumber = 0;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-
-        /* Make sure that the supplied pgd is ok */
         vspaceRoot = VSPACE_PTR(cap_vspace_cap_get_capVSBasePtr(cap));
         asid = cap_vspace_cap_get_capVSMappedASID(cap);
 
-        find_ret = findVSpaceForASID(asid);
-        if (unlikely(find_ret.status != EXCEPTION_NONE)) {
-            userError("VSpaceRoot Flush: No VSpace for ASID");
-            current_syscall_error.type = seL4_FailedLookup;
-            current_syscall_error.failedLookupWasSource = false;
+        if (!checkArgs(vspaceRoot, asid, cap, start, end)) {
             return EXCEPTION_SYSCALL_ERROR;
         }
-
-        if (unlikely(find_ret.vspace_root != vspaceRoot)) {
-            userError("VSpaceRoot Flush: Invalid VSpace Cap");
-            current_syscall_error.type = seL4_InvalidCapability;
-            current_syscall_error.invalidCapNumber = 0;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-
         /* Look up the frame containing 'start'. */
         resolve_ret = lookupPTSlot(vspaceRoot, start);
         pte = *resolve_ret.ptSlot;
@@ -1405,6 +1637,11 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
 
         setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
         return performVSpaceFlush(invLabel, vspaceRoot, asid, start, end - 1, pstart);
+
+    case ARMVSpaceMap:
+        return decodeARMVSpaceMap(word_t *buffer, word_t length, cte_t *cte, cap_t cap);
+    case ARMVSpaceUnmap:
+        return decodeARMVSpaceUnmap(word_t *buffer, word_t length, cte_t *cte, cap_t cap);
 
     default:
         current_syscall_error.type = seL4_IllegalOperation;
