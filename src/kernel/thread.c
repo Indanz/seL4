@@ -326,8 +326,7 @@ static void prepareNextDomain(void)
 static void nextDomain(void)
 {
     ksDomScheduleIdx++;
-    if (dschedule_is_end_marker(ksDomScheduleIdx) ||
-        ksDomScheduleIdx >= domScheduleLength) {
+    if (dschedule_is_end_marker(ksDomScheduleIdx)) {
         ksDomScheduleIdx = ksDomScheduleStart;
     }
 #ifdef CONFIG_KERNEL_MCS

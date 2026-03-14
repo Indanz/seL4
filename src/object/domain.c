@@ -79,11 +79,12 @@ static exception_t decodeDomainScheduleConfigure(word_t length, word_t *buffer)
     domain = getSyscallArg(1, buffer);
     duration = mode_parseTimeArg(2, buffer);
 
-    if (index >= domScheduleLength) {
+    /* Last entry must stay an end marker, hence the -1: */
+    if (index >= domScheduleLength - 1) {
         userError("Domain Schedule Configure: Invalid index.");
         current_syscall_error.type = seL4_RangeError;
         current_syscall_error.rangeErrorMin = 0;
-        current_syscall_error.rangeErrorMax = domScheduleLength - 1;
+        current_syscall_error.rangeErrorMax = domScheduleLength - 2;
         return EXCEPTION_SYSCALL_ERROR;
     }
     if (domain >= numDomains) {
