@@ -372,6 +372,13 @@ bool_t CONST Arch_sameRegionAs(cap_t cap_a, cap_t cap_b)
             return cap_vcpu_cap_get_capVCPUPtr(cap_a) ==
                    cap_vcpu_cap_get_capVCPUPtr(cap_b);
         }
+#ifdef CONFIG_X86_APICV
+        /* Needed to make revoke clean up APICv frame caps */
+        if (cap_get_capType(cap_b) == cap_frame_cap) {
+            vcpu_t *vcpu = VCPU_PTR(cap_vcpu_cap_get_capVCPUPtr(cap_a));
+            return cap_frame_cap_get_capFBasePtr(cap_b) == (word_t)&vcpu->apicv;
+        }
+#endif
         break;
 
     case cap_ept_pml4_cap:

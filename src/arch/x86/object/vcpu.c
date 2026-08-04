@@ -1088,6 +1088,35 @@ static exception_t decodeSetTCB(cap_t cap, word_t length, word_t *buffer)
     return invokeSetTCB(VCPU_PTR(cap_vcpu_cap_get_capVCPUPtr(cap)), TCB_PTR(cap_thread_cap_get_capTCBPtr(tcbCap)));
 }
 
+#ifdef CONFIG_X86_APICV
+static void invokeGetAPICvPageCap(cap_t cap, cte_t *slot)
+{
+    vcpu_t *vcpu = VCPU_PTR(cap_vcpu_cap_get_capVCPUPtr(cap));
+
+    slot->cap = cap_frame_cap_new(
+        asidInvalid,          /* capFMappedASID    */
+        (word_t)&vcpu->apicv, /* capFBasePtr       */
+        X86_SmallPage,        /* capFSize          */
+        X86_MappingNone,      /* capFMapType       */
+        0,                    /* capFMappedAddress */
+        VMReadWrite,          /* capFVMRights      */
+        1                     /* capFIsDevice      */
+    );
+}
+
+static exception_t decodeGetAPICvPageCap(cap_t cap, cte_t *slot)
+{
+    if (isFinalCapability(cap)) {
+        userError("May not be called on the last VCPU cap");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
+    invokeGetAPICvPageCap(cap, slot);
+    return EXCEPTION_NONE;
+}
+#endif
+
 void vcpu_update_state_sysvmenter(vcpu_t *vcpu)
 {
     word_t *buffer;
@@ -1156,6 +1185,10 @@ exception_t decodeX86VCPUInvocation(
     case X86VCPUReadMSR:
         return decodeVCPUReadMSR(cap, length, buffer);
 #endif /* CONFIG_X86_64_VTX_64BIT_GUESTS */
+#ifdef CONFIG_X86_APICV
+    case X86VCPUGetAPICvPageCap:
+        return invokeGetAPICvPageCap(cap, slot);
+#endif
     default:
         userError("VCPU: Illegal operation.");
         current_syscall_error.type = seL4_IllegalOperation;

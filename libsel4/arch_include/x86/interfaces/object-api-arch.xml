@@ -1056,6 +1056,24 @@
                 </description>
             </error>
         </method>
+        <method id="X86VCPUGetAPICvPageCap" name="GetAPICvPageCap" manual_name="Get APICv page cap">
+            <condition><config var="CONFIG_VTX"/></condition>
+            <brief>
+                Convert a VCPU cap into page cap for APICv.
+            </brief>
+            <description>
+		Must be called on a copy of a VCPU cap. On return, the provided VCPU cap will be
+		a normal page cap, which can be used to map a VCPU's APICv area.
+                <docref>See <autoref label='sec:virt'/>.</docref>
+            </description>
+            <error name="seL4_IllegalOperation">
+                <description>
+                    The <texttt text="_service"/> is a CPtr to a capability of the wrong type,
+                    or not a direct copy of another VCPU cap, or the source cap has been turned
+                    into a page cap.
+                </description>
+            </error>
+        </method>
     </interface>
     <interface name="seL4_X86_EPTPDPT" manual_name="Extended Page Table Page-Directory Pointers Table"
         cap_description="Capability to the EPT PDPT being operated on.">

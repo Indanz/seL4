@@ -10,6 +10,7 @@
 #include <api/failures.h>
 
 #define VCPU_VMCS_SIZE 4096
+#define VCPU_APICV_SIZE 4096
 #define VCPU_IOBITMAP_SIZE 8192
 
 #define VMX_CONTROL_VPID 0x00000000
@@ -282,6 +283,9 @@ struct vcpu {
     /* Storage for VMCS region. First field of vcpu_t so they share address.
      * Will use at most 4KiB of memory. Statically reserve 4KiB for convenience. */
     char vmcs[VCPU_VMCS_SIZE];
+#ifdef CONFIG_X86_APICV
+    char apicv[VCPU_APICV_SIZE];
+#endif
     word_t io[VCPU_IOBITMAP_SIZE / sizeof(word_t)];
 
     /* Place the fpu state here so that it is aligned */
